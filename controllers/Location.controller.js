@@ -1,23 +1,21 @@
-import mongoose from "mongoose";
 import {
     calculateTotalDistance,
     generateClusters,
     generateRandomPoints,
     getBoundingCoordinates,
 } from "../utils/Location.utils.js";
-import { Location } from "../models/Location.js";
-import { Driver } from "../models/Driver.js";
+import Location from "../models/Location.js";
+import Driver from "../models/Driver.js";
+import { db } from "../config/firebase.js";
 
 export const getHotspots = async (req, res) => {
     try {
-        let { city, state, date, radius = 10 } = req.query;
+        let { city, state, date } = req.query;
 
         if (!city || !state || !date)
             return res
                 .status(400)
                 .json({ message: "City, state and date are required" });
-
-        radius = parseInt(radius) * 1000;
 
         const startDate = new Date(date);
         const endDate = new Date(date + "T23:59:59");
@@ -34,25 +32,13 @@ export const getHotspots = async (req, res) => {
             parseFloat(coordinate)
         );
 
-        const locationData = await Location.aggregate([
-            {
-                $match: {
-                    latitude: {
-                        $gte: boundingCoordinates[0],
-                        $lte: boundingCoordinates[1],
-                    },
-                    longitude: {
-                        $gte: boundingCoordinates[2],
-                        $lte: boundingCoordinates[3],
-                    },
-                    createdAt: {
-                        $gte: startDate,
-                        $lte: endDate,
-                    },
-                },
-            },
-        ]);
+        let locationData = await db
+            .collection("locations")
+            .where("createdAt", ">=", startDate)
+            .where("createdAt", "<=", endDate)
+            .get();
 
+        locationData = locationData.docs.map((doc) => doc.data());
         // using the dbscan algorithm to generate clusters
         let clusters = generateClusters(locationData);
 
@@ -78,25 +64,22 @@ export const calculateDistanceTravelledInADay = async (req, res) => {
         if (startDate == "Invalid Date" || endDate == "Invalid Date")
             return res.status(400).json({ message: "Invalid date" });
 
-        const locationData = await Location.aggregate([
-            {
-                $match: {
-                    driver: new mongoose.Types.ObjectId(driverId),
-                    createdAt: {
-                        $gte: startDate,
-                        $lte: endDate,
-                    },
-                },
-            },
-            {
-                $sort: {
-                    createdAt: 1,
-                },
-            },
-        ]);
+        // check if the driver exists
+        let driver = await db.collection("drivers").doc(driverId).get();
+        if (!driver.exists)
+            return res.status(400).json({ message: "Invalid driverId" });
 
+        let locationData = await db
+            .collection("locations")
+            .where("driverId", "==", driverId)
+            .where("createdAt", ">=", startDate)
+            .where("createdAt", "<=", endDate)
+            .orderBy("createdAt", "asc")
+            .get();
+
+        locationData = locationData.docs.map((doc) => doc.data());
         if (locationData.length < 2) {
-            return res.status(200).json({ distance: 0 });
+            return res.status(200).json({ distance: 0, unit: "meters" });
         }
 
         let distance = calculateTotalDistance(locationData);
@@ -124,6 +107,12 @@ export const getRandomPoints = async (req, res) => {
         if (date == "Invalid Date")
             return res.status(400).json({ message: "Invalid date" });
 
+        let driver = await db.collection("drivers").doc(driverId).get();
+        if (!driver.exists)
+            return res.status(400).json({ message: "Invalid driverId" });
+
+        let locationsRef = db.collection("locations");
+
         const boundingCoordinates = await getBoundingCoordinates(city, state);
         const randomPoints = generateRandomPoints(
             boundingCoordinates,
@@ -131,7 +120,12 @@ export const getRandomPoints = async (req, res) => {
             driverId
         );
 
-        await Location.insertMany(randomPoints);
+        // console.log("Random Points", randomPoints);
+        randomPoints.forEach(async (point) => {
+            console.log("Point", point);
+            await locationsRef.add(point);
+        });
+
         res.status(200).json(randomPoints);
     } catch (err) {
         console.log("Error in getRandomPoints", err);
@@ -145,9 +139,13 @@ export const createDriver = async (req, res) => {
 
         if (!name) return res.status(400).json({ message: "Name is required" });
 
-        const driver = new Driver({ name });
-        await driver.save();
-        res.status(201).json(driver);
+        const driver = new Driver(name);
+
+        let driverObj = driver.toJSON();
+        let driverRef = await db.collection("drivers").add(driverObj);
+
+        driverObj.id = driverRef.id;
+        res.status(201).json(driverObj);
     } catch (err) {
         console.log("Error in createDriver", err);
         res.status(500).json({ message: "Internal Server Error" });
@@ -156,7 +154,13 @@ export const createDriver = async (req, res) => {
 
 export const getAllDrivers = async (req, res) => {
     try {
-        const drivers = await Driver.find();
+        let drivers = [];
+        const driversRef = await db.collection("drivers").get();
+
+        driversRef.forEach((doc) => {
+            drivers.push({ id: doc.id, ...doc.data() });
+        });
+
         res.status(200).json(drivers);
     } catch (err) {
         console.log("Error in getAllDrivers", err);
@@ -176,21 +180,23 @@ export const addLocation = async (req, res) => {
         latitude = parseFloat(latitude);
         longitude = parseFloat(longitude);
 
-        if(isNaN(latitude) || isNaN(longitude))
-            return res.status(400).json({ message: "Invalid latitude or longitude" });
+        if (isNaN(latitude) || isNaN(longitude))
+            return res
+                .status(400)
+                .json({ message: "Invalid latitude or longitude" });
 
-        const driver = await Driver.findById(driverId);
-        if (!driver)
+        let driver = await db.collection("drivers").doc(driverId).get();
+        if (!driver.exists)
             return res.status(400).json({ message: "Invalid driverId" });
 
-        const location = new Location({
-            latitude,
-            longitude,
-            driver: driverId,
-        });
+        const location = new Location(latitude, longitude, driverId);
 
-        await location.save();
-        res.status(201).json(location);
+        let locationObj = location.toJSON();
+
+        let locationRef = await db.collection("locations").add(locationObj);
+        locationObj.id = locationRef.id;
+
+        res.status(201).json(locationObj);
     } catch (err) {
         console.log("Error in addLocation", err);
         res.status(500).json({ message: "Internal Server Error" });

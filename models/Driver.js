@@ -1,15 +1,13 @@
-import { Schema, model } from "mongoose";
-
-const driverSchema = new Schema(
-    {
-        name: {
-            type: String,
-            required: true,
-        },
-    },
-    {
-        timestamps: true,
+class Driver {
+    constructor(name) {
+        this.name = name;
     }
-);
 
-export const Driver = model("Driver", driverSchema);
+    toJSON() {
+        return {
+            name: this.name,
+        };
+    }
+}
+
+export default Driver;

@@ -1,23 +1,19 @@
-import { Schema, model } from "mongoose";
+import { GeoPoint } from "firebase-admin/firestore";
 
-const locationSchema = new Schema({
-    latitude: {
-        type: Number,
-        required: true,
-    },
-    longitude: {
-        type: Number,
-        required: true,
-    },
+class Location {
+    constructor(latitude, longitude, driverId, createdAt = new Date(Date.now())) {
+        this.coords = new GeoPoint(latitude, longitude);
+        this.driverId = driverId;
+        this.createdAt = createdAt;
+    }
 
-    driver: {
-        type: Schema.Types.ObjectId,
-        ref: "Driver",
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now(),
-    },
-});
+    toJSON() {
+        return {
+            coords: this.coords,
+            driverId: this.driverId,
+            createdAt: this.createdAt,
+        };
+    }
+}
 
-export const Location = model("Location", locationSchema);
+export default Location;
