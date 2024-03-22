@@ -1,5 +1,4 @@
 import axios from "axios";
-import mongoose from "mongoose";
 import haversine from "haversine-distance";
 import clustering from "density-clustering";
 import { GeoPoint } from "firebase-admin/firestore";

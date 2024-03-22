@@ -30,7 +30,6 @@ app.use(
 
 app.use("/api/v1", LocationRouter);
 
-// socket.io if we want to get the realtime data from frontend.
 app.listen(process.env.PORT, () => {
     console.log(`🔎 Server running on port ${process.env.PORT}`);
 });

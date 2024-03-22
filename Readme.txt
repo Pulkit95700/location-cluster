@@ -1,9 +1,10 @@
 // env format
 
 PORT=8001
-MONGODB_URI=mongodb+srv://{username}:{Password}@cluster0.2rtodcf.mongodb.net
 NOMINATIM_URL=http://nominatim.openstreetmap.org
-
+FIREBASE_PROJECT_ID="your firebase project id"
+FIREBASE_PRIVATE_KEY="your firebase private key"
+FIREBASE_CLIENT_EMAIL="your firebase client email"
 
 // steps to work with API
 
